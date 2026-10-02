@@ -23,22 +23,29 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -48,6 +55,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -84,6 +92,7 @@ class MainActivity : ComponentActivity() {
 fun SimpleMediaApp(viewModel: MainViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsState()
     var selectedTab by remember { mutableStateOf(AppTab.Music) }
+    var videoFullscreen by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     val musicFolderPicker = rememberLauncherForActivityResult(
@@ -110,14 +119,16 @@ fun SimpleMediaApp(viewModel: MainViewModel = viewModel()) {
 
     Scaffold(
         bottomBar = {
-            NavigationBar {
-                AppTab.entries.forEach { tab ->
-                    NavigationBarItem(
-                        selected = selectedTab == tab,
-                        onClick = { selectedTab = tab },
-                        icon = { },
-                        label = { Text(tab.label) }
-                    )
+            if (!videoFullscreen) {
+                NavigationBar {
+                    AppTab.entries.forEach { tab ->
+                        NavigationBarItem(
+                            selected = selectedTab == tab,
+                            onClick = { selectedTab = tab },
+                            icon = { },
+                            label = { Text(tab.label) }
+                        )
+                    }
                 }
             }
         }
@@ -156,7 +167,8 @@ fun SimpleMediaApp(viewModel: MainViewModel = viewModel()) {
                     onClearFolder = { viewModel.clearVideoFolder() },
                     onPlayQueue = { items, startIndex -> viewModel.setPlaybackQueue(items, startIndex) },
                     onNext = { viewModel.playNextInQueue() },
-                    onPrevious = { viewModel.playPreviousInQueue() }
+                    onPrevious = { viewModel.playPreviousInQueue() },
+                    onFullscreenChanged = { videoFullscreen = it }
                 )
                 AppTab.Settings -> SettingsScreen(
                     musicFolderUri = uiState.musicFolderUri,
@@ -364,34 +376,42 @@ private fun PlaybackControls(
     onPrevious: () -> Unit,
     onTogglePlayback: () -> Unit,
     onNext: () -> Unit,
+    onInteraction: () -> Unit = {},
     textColor: Color = MaterialTheme.colorScheme.primary
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        TextButton(
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(horizontal = 2.dp, vertical = 0.dp),
-            colors = ButtonDefaults.textButtonColors(contentColor = textColor),
-            enabled = canGoPrevious,
-            onClick = onPrevious
-        ) { Text("Anterior", style = MaterialTheme.typography.labelMedium, maxLines = 1) }
-        TextButton(
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(horizontal = 2.dp, vertical = 0.dp),
-            colors = ButtonDefaults.textButtonColors(contentColor = textColor),
-            onClick = onTogglePlayback
-        ) { Text(if (isPlaying) "Pausa" else "Reproducir", style = MaterialTheme.typography.labelMedium, maxLines = 1) }
-        TextButton(
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(horizontal = 2.dp, vertical = 0.dp),
-            colors = ButtonDefaults.textButtonColors(contentColor = textColor),
-            enabled = canGoNext,
-            onClick = onNext
-        ) { Text("Siguiente", style = MaterialTheme.typography.labelMedium, maxLines = 1) }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = { onInteraction(); onPrevious() }, enabled = canGoPrevious) {
+            Icon(painterResource(androidx.media3.ui.R.drawable.exo_icon_previous), contentDescription = "Pista anterior", tint = textColor, modifier = Modifier.size(30.dp))
+        }
+        IconButton(onClick = { onInteraction(); onTogglePlayback() }, modifier = Modifier.size(64.dp)) {
+            Icon(
+                painter = painterResource(
+                    if (isPlaying) androidx.media3.ui.R.drawable.exo_icon_pause
+                    else androidx.media3.ui.R.drawable.exo_icon_play
+                ),
+                contentDescription = if (isPlaying) "Pausar" else "Reproducir",
+                tint = textColor,
+                modifier = Modifier.size(42.dp)
+            )
+        }
+        IconButton(onClick = { onInteraction(); onNext() }, enabled = canGoNext) {
+            Icon(painterResource(androidx.media3.ui.R.drawable.exo_icon_next), contentDescription = "Pista siguiente", tint = textColor, modifier = Modifier.size(30.dp))
+        }
     }
 }
 
 @Composable
-private fun PlaybackSeekBar(positionMs: Long, durationMs: Long, onSeek: (Long) -> Unit) {
+private fun PlaybackSeekBar(
+    positionMs: Long,
+    durationMs: Long,
+    onSeek: (Long) -> Unit,
+    textColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    onInteraction: () -> Unit = {}
+) {
     var isScrubbing by remember { mutableStateOf(false) }
     var scrubPosition by remember { mutableStateOf(0f) }
     val maximum = durationMs.coerceAtLeast(1L).toFloat()
@@ -404,22 +424,29 @@ private fun PlaybackSeekBar(positionMs: Long, durationMs: Long, onSeek: (Long) -
         Slider(
             value = scrubPosition.coerceIn(0f, maximum),
             onValueChange = {
+                onInteraction()
                 isScrubbing = true
                 scrubPosition = it
             },
             onValueChangeFinished = {
                 onSeek(scrubPosition.toLong())
+                onInteraction()
                 isScrubbing = false
             },
             valueRange = 0f..maximum,
-            enabled = durationMs > 0L
+            enabled = durationMs > 0L,
+            colors = SliderDefaults.colors(
+                thumbColor = MaterialTheme.colorScheme.primary,
+                activeTrackColor = MaterialTheme.colorScheme.primary,
+                inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+            )
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(formatPlaybackTime(if (isScrubbing) scrubPosition.toLong() else positionMs), style = MaterialTheme.typography.labelSmall)
-            Text(formatPlaybackTime(durationMs), style = MaterialTheme.typography.labelSmall)
+            Text(formatPlaybackTime(if (isScrubbing) scrubPosition.toLong() else positionMs), style = MaterialTheme.typography.labelSmall, color = textColor)
+            Text(formatPlaybackTime(durationMs), style = MaterialTheme.typography.labelSmall, color = textColor)
         }
     }
 }
@@ -440,12 +467,15 @@ fun VideoScreen(
     onClearFolder: () -> Unit,
     onPlayQueue: (List<QueuedMediaItem>, startIndex: Int) -> Unit,
     onNext: () -> Unit,
-    onPrevious: () -> Unit
+    onPrevious: () -> Unit,
+    onFullscreenChanged: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
     var videoError by remember { mutableStateOf<String?>(null) }
     var isPlaying by remember { mutableStateOf(false) }
     var isFullscreen by remember { mutableStateOf(false) }
+    var controlsVisible by remember { mutableStateOf(true) }
+    var controlsInteraction by remember { mutableStateOf(0) }
     var followsDeviceOrientation by remember { mutableStateOf(false) }
     var isSeeking by remember { mutableStateOf(false) }
     var currentPositionMs by remember { mutableStateOf(0L) }
@@ -456,6 +486,16 @@ fun VideoScreen(
 
     BackHandler(enabled = isFullscreen) {
         isFullscreen = false
+    }
+
+    LaunchedEffect(isFullscreen) {
+        onFullscreenChanged(isFullscreen)
+    }
+
+    LaunchedEffect(isFullscreen, controlsVisible, controlsInteraction) {
+        if (!isFullscreen || !controlsVisible) return@LaunchedEffect
+        delay(2_000L)
+        controlsVisible = false
     }
 
     DisposableEffect(isFullscreen, activity) {
@@ -608,10 +648,19 @@ fun VideoScreen(
                     TextButton(onClick = {
                         followsDeviceOrientation = false
                         isFullscreen = true
+                        controlsVisible = true
+                        controlsInteraction += 1
                     }) {
-                        Text("Pantalla completa", style = MaterialTheme.typography.labelMedium)
+                        Icon(
+                            painterResource(androidx.media3.ui.R.drawable.exo_icon_fullscreen_enter),
+                            contentDescription = "Pantalla completa"
+                        )
                     }
-                    PlaybackSeekBar(currentPositionMs, durationMs) { exoPlayer.seekTo(it) }
+                    PlaybackSeekBar(
+                        positionMs = currentPositionMs,
+                        durationMs = durationMs,
+                        onSeek = { exoPlayer.seekTo(it) }
+                    )
                     PlaybackControls(
                         isPlaying = isPlaying,
                         canGoPrevious = currentQueueIndex > 0,
@@ -630,7 +679,13 @@ fun VideoScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black),
+                    .background(Color.Black)
+                    .pointerInput(isFullscreen) {
+                        detectTapGestures {
+                            controlsVisible = true
+                            controlsInteraction += 1
+                        }
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 AndroidView(
@@ -642,34 +697,69 @@ fun VideoScreen(
                     },
                     modifier = Modifier.fillMaxSize()
                 )
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 20.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                if (controlsVisible) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 20.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.SpaceBetween
                     ) {
-                        TextButton(onClick = { isFullscreen = false }) {
-                            Text("Salir", color = Color.White)
+                        Surface(
+                            color = Color.Black.copy(alpha = 0.55f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = currentVideoTitle ?: "Vídeo",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                TextButton(onClick = {
+                                    followsDeviceOrientation = !followsDeviceOrientation
+                                    controlsInteraction += 1
+                                }) {
+                                    Text(if (followsDeviceOrientation) "Auto" else "Giro", color = Color.White)
+                                }
+                                IconButton(onClick = { isFullscreen = false }) {
+                                    Icon(
+                                        painterResource(androidx.media3.ui.R.drawable.exo_icon_fullscreen_exit),
+                                        contentDescription = "Salir de pantalla completa",
+                                        tint = Color.White
+                                    )
+                                }
+                            }
                         }
-                        TextButton(onClick = { followsDeviceOrientation = !followsDeviceOrientation }) {
-                            Text(if (followsDeviceOrientation) "Rotación automática" else "Permitir giro", color = Color.White)
+                        Surface(
+                            color = Color.Black.copy(alpha = 0.55f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                                PlaybackSeekBar(
+                                    positionMs = currentPositionMs,
+                                    durationMs = durationMs,
+                                    onSeek = { exoPlayer.seekTo(it) },
+                                    textColor = Color.White,
+                                    onInteraction = { controlsInteraction += 1 }
+                                )
+                                PlaybackControls(
+                                    isPlaying = isPlaying,
+                                    canGoPrevious = currentQueueIndex > 0,
+                                    canGoNext = currentQueueIndex in 0 until queue.lastIndex,
+                                    onPrevious = onPrevious,
+                                    onTogglePlayback = { if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play() },
+                                    onNext = onNext,
+                                    onInteraction = { controlsInteraction += 1 },
+                                    textColor = Color.White
+                                )
+                            }
                         }
-                    }
-                    Column {
-                        PlaybackSeekBar(currentPositionMs, durationMs) { exoPlayer.seekTo(it) }
-                        PlaybackControls(
-                            isPlaying = isPlaying,
-                            canGoPrevious = currentQueueIndex > 0,
-                            canGoNext = currentQueueIndex in 0 until queue.lastIndex,
-                            onPrevious = onPrevious,
-                            onTogglePlayback = { if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play() },
-                            onNext = onNext,
-                            textColor = Color.White
-                        )
                     }
                 }
             }

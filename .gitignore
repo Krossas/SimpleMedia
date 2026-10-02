@@ -23,10 +23,23 @@ Thumbs.db
 
 # APKs
 *.apk
+app/release/
+app/debug/
 
 # Signing
 *.jks
 *.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+key.properties
+keystore.properties
+signing.properties
+
+# Environment files
+.env
+.env.*
 
 # Temporary files
 *.tmp
