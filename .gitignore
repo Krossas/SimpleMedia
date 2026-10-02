@@ -1,0 +1,33 @@
+# Android / Gradle
+.gradle/
+build/
+*/build/
+captures/
+
+# Android Studio
+.idea/
+*.iml
+
+# Local configuration
+local.properties
+
+# Kotlin
+.kotlin/
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# APKs
+*.apk
+
+# Signing
+*.jks
+*.keystore
+
+# Temporary files
+*.tmp
+*.temp
