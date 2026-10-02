@@ -38,6 +38,11 @@ class PlaybackService : MediaSessionService() {
                     updateNotification(false)
                     return START_STICKY
                 }
+                ACTION_SEEK -> {
+                    val positionMs = intent.getLongExtra(EXTRA_POSITION_MS, 0L)
+                    player?.seekTo(positionMs)
+                    return START_STICKY
+                }
                 ACTION_STOP -> {
                     player?.stop()
                     player?.clearMediaItems()
@@ -127,6 +132,13 @@ class PlaybackService : MediaSessionService() {
             ContextCompat.startForegroundService(context, Intent(context, PlaybackService::class.java).setAction(ACTION_PAUSE))
         }
 
+        fun seek(context: Context, positionMs: Long) {
+            val intent = Intent(context, PlaybackService::class.java)
+                .setAction(ACTION_SEEK)
+                .putExtra(EXTRA_POSITION_MS, positionMs)
+            ContextCompat.startForegroundService(context, intent)
+        }
+
         fun stop(context: Context) {
             ContextCompat.startForegroundService(context, Intent(context, PlaybackService::class.java).setAction(ACTION_STOP))
         }
@@ -137,6 +149,8 @@ class PlaybackService : MediaSessionService() {
         private const val NOTIFICATION_ID = 1001
         private const val ACTION_PLAY = "com.simplemedia.app.action.PLAY"
         private const val ACTION_PAUSE = "com.simplemedia.app.action.PAUSE"
+        private const val ACTION_SEEK = "com.simplemedia.app.action.SEEK"
         private const val ACTION_STOP = "com.simplemedia.app.action.STOP"
+        private const val EXTRA_POSITION_MS = "extra_position_ms"
     }
 }
